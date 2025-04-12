@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add any global styles or overrides here if needed */
+body {
+  font-family: 'Inter', sans-serif; /* Example: Setting a default font */
+}
+
+/* Ensure html and body take full height for hero section */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure the main div container also takes full height */
+.min-h-screen {
+  min-height: 100vh; /* Use viewport height for full screen coverage */
+}
+
+/* If using App.tsx structure where Router > div contains everything */
+/* Ensure the div inside Router takes full height */
+/* This might depend on your exact App.tsx structure */
+/* Example: If #root's direct child is the main container */
+#root > div {
+    height: 100%;
+}
