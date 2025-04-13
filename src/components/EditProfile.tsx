@@ -1,29 +1,58 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Camera, Upload } from 'lucide-react';
 import { usePetStore } from '../store';
 import { PetProfile } from '../types';
+import { uploadImage } from '../utils/uploadImage';
 
 export const EditProfile: React.FC = () => {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   const [pin, setPin] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false); // Estado para el popup
-  const { profile, updateProfile, verifyPin } = usePetStore();
-  const [formData, setFormData] = useState<PetProfile>(profile || {});
-  const [previewUrl, setPreviewUrl] = useState(profile?.image_url || '');
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const { profile, profileExists, updateProfile, verifyPin, fetchProfileById } = usePetStore();
+  const [formData, setFormData] = useState<Partial<PetProfile>>({});
+  const [previewUrl, setPreviewUrl] = useState('');
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  useEffect(() => {
+    if (id) {
+      fetchProfileById(id);
+    }
+  }, [id, fetchProfileById]);
+
+  useEffect(() => {
+    if (profile) {
+      setFormData(profile);
+      setPreviewUrl(profile.image_url || '');
+    }
+  }, [profile]);
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        setPreviewUrl(dataUrl);
-        setFormData(prev => ({ ...prev, image_url: dataUrl }));
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      try {
+        // Create a local preview
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result as string;
+          setPreviewUrl(dataUrl);
+        };
+        reader.readAsDataURL(file);
+
+        // Upload to Supabase Storage
+        const imageUrl = await uploadImage(file);
+        if (imageUrl) {
+          setFormData(prev => ({ ...prev, image_url: imageUrl }));
+        }
+      } catch (error) {
+        console.error('Error handling image:', error);
+      } finally {
+        setIsUploading(false);
+      }
     }
   }, []);
 
@@ -32,7 +61,8 @@ export const EditProfile: React.FC = () => {
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.gif']
     },
-    maxFiles: 1
+    maxFiles: 1,
+    disabled: isUploading
   });
 
   const handlePinSubmit = (e: React.FormEvent) => {
@@ -44,17 +74,21 @@ export const EditProfile: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile(formData);
-    setShowSuccessPopup(true); // Mostrar el popup
-    setTimeout(() => {
-      setShowSuccessPopup(false);
-      navigate('/pet/default'); // Redirigir a PetProfile en lugar de la página principal
-    }, 2000); // Cierra el popup después de 2 segundos y redirige
+    if (!id) return;
+
+    const success = await updateProfile(formData, id);
+    if (success) {
+      setShowSuccessPopup(true);
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+        navigate(`/pet/${id}`);
+      }, 2000);
+    }
   };
 
-  if (!isEditing && profile?.pin) {
+  if (profileExists && profile?.pin && !isEditing) {
     return (
       <div className="max-w-md mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg">
         <h2 className="text-2xl font-bold mb-6 text-gray-800">Wprowadź PIN, aby edytować</h2>
@@ -93,7 +127,7 @@ export const EditProfile: React.FC = () => {
               {...getRootProps()}
               className={`relative w-48 h-48 rounded-full overflow-hidden cursor-pointer border-4 ${
                 isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'
-              } transition-all duration-200 hover:border-blue-400`}
+              } transition-all duration-200 hover:border-blue-400 ${isUploading ? 'opacity-50' : ''}`}
             >
               <input {...getInputProps()} />
               {previewUrl ? (
@@ -106,7 +140,7 @@ export const EditProfile: React.FC = () => {
                 <div className="flex flex-col items-center justify-center h-full p-4">
                   <Camera className="w-12 h-12 text-gray-400 mb-2" />
                   <p className="text-sm text-gray-500 text-center">
-                    Przeciągnij obraz lub kliknij, aby wybrać
+                    {isUploading ? 'Przesyłanie...' : 'Przeciągnij obraz lub kliknij, aby wybrać'}
                   </p>
                 </div>
               )}
@@ -121,7 +155,7 @@ export const EditProfile: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Imię zwierzaka</label>
               <input
                 type="text"
-                value={formData.name}
+                value={formData.name || ''}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Wprowadź imię zwierzaka"
@@ -132,7 +166,7 @@ export const EditProfile: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Rasa</label>
               <input
                 type="text"
-                value={formData.breed}
+                value={formData.breed || ''}
                 onChange={(e) => setFormData({ ...formData, breed: e.target.value })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Wprowadź rasę"
@@ -143,7 +177,7 @@ export const EditProfile: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Wiek</label>
               <input
                 type="number"
-                value={formData.age}
+                value={formData.age || ''}
                 onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Wprowadź wiek"
@@ -153,7 +187,7 @@ export const EditProfile: React.FC = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Płeć</label>
               <select
-                value={formData.gender}
+                value={formData.gender || 'male'}
                 onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'male' | 'female' })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
@@ -166,7 +200,7 @@ export const EditProfile: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Adres</label>
               <input
                 type="text"
-                value={formData.address}
+                value={formData.address || ''}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Wprowadź adres, gdzie mieszka zwierzak"
@@ -177,7 +211,7 @@ export const EditProfile: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Opis</label>
             <textarea
-              value={formData.description}
+              value={formData.description || ''}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows={4}
@@ -193,7 +227,7 @@ export const EditProfile: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Imię właściciela</label>
                 <input
                   type="text"
-                  value={formData.owner_name}
+                  value={formData.owner_name || ''}
                   onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Wprowadź imię właściciela"
@@ -204,7 +238,7 @@ export const EditProfile: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Numer telefonu</label>
                 <input
                   type="tel"
-                  value={formData.owner_phone}
+                  value={formData.owner_phone || ''}
                   onChange={(e) => setFormData({ ...formData, owner_phone: e.target.value })}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Wprowadź numer telefonu"
@@ -215,7 +249,7 @@ export const EditProfile: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
-                  value={formData.owner_email}
+                  value={formData.owner_email || ''}
                   onChange={(e) => setFormData({ ...formData, owner_email: e.target.value })}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Wprowadź adres email"
@@ -230,7 +264,7 @@ export const EditProfile: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">PIN (do przyszłej edycji)</label>
               <input
                 type="password"
-                value={formData.pin}
+                value={formData.pin || ''}
                 onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Wprowadź PIN"
@@ -242,12 +276,12 @@ export const EditProfile: React.FC = () => {
         <button
           type="submit"
           className="w-full bg-blue-600 text-white py-4 rounded-lg hover:bg-blue-700 transition duration-200 mt-8 text-lg font-semibold"
+          disabled={isUploading}
         >
-          {profile?.pin ? '🐾 Zapisz zmiany' : '🐾 Utwórz profil'}
+          {isUploading ? 'Przesyłanie...' : profile?.pin ? '🐾 Zapisz zmiany' : '🐾 Utwórz profil'}
         </button>
       </form>
 
-      {/* Popup de éxito */}
       {showSuccessPopup && (
         <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center shadow-lg transform transition-all animate-bounce-in">

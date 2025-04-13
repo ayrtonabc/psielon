@@ -14,6 +14,7 @@ export interface PetProfile {
   pin?: string;
   created_at: string;
   last_updated: string;
+  is_complete: boolean;
 }
 
 export interface AdminStats {

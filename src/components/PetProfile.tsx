@@ -1,32 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Mail, Download, Edit, Heart, PawPrint as Paw, MapPin, Calendar, Home, Share2, Check, MessageSquare } from 'lucide-react';
-import { Link, useParams, useLocation } from 'react-router-dom';
+import { Link, useParams, Navigate } from 'react-router-dom';
 import { usePetStore } from '../store';
 import { generatePDF } from '../utils/pdf';
+import { HeroSection } from './HeroSection';
 
 export const PetProfile: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
   const [copied, setCopied] = useState(false);
-  
-  // Perfil estático de mascota
-  const profile = {
-    id: 'default',
-    name: 'Azor',
-    breed: 'Owczarek Niemiecki',
-    age: 3,
-    gender: 'male',
-    address: 'ul. Kwiatowa 15, Warszawa',
-    description: 'Azor to energiczny i przyjazny pies, który uwielbia długie spacery i zabawę piłką. Jest bardzo inteligentny i szybko się uczy. Lubi towarzystwo innych psów i jest bardzo opiekuńczy wobec dzieci. Jego ulubione przysmaki to kawałki kurczaka i marchewki.',
-    image_url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1',
-    cover_image_url: 'https://images.unsplash.com/photo-1444212477490-ca407925329e',
-    owner_name: 'Marek Kowalski',
-    owner_phone: '+48 123 456 789',
-    owner_email: 'marek.kowalski@example.com',
-    created_at: new Date().toISOString(),
-    last_updated: new Date().toISOString()
-  };
-  
+  const { profile, profileExists, loadingState, fetchProfileById } = usePetStore();
+
+  useEffect(() => {
+    if (id) {
+      fetchProfileById(id);
+    }
+  }, [id, fetchProfileById]);
+
+  if (loadingState === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show HeroSection if profile doesn't exist or isn't complete
+  if (!profileExists || !profile?.is_complete) {
+    return <HeroSection />;
+  }
+
   const shareProfile = () => {
-    const url = window.location.origin + '/pet/default';
+    const url = window.location.href;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -59,7 +63,7 @@ export const PetProfile: React.FC = () => {
               )}
             </button>
             <Link
-              to="/edit"
+              to={`/pet/${id}/edit`}
               className="p-3 bg-white rounded-full shadow-lg hover:bg-gray-100 transition duration-200"
             >
               <Edit className="w-5 h-5 text-gray-600" />
@@ -170,14 +174,6 @@ export const PetProfile: React.FC = () => {
             <Download className="w-6 h-6" />
             <span>Pobierz Informacje</span>
           </button>
-        </div>
-      </div>
-      
-      {/* Footer con texto y logo en polaco */}
-      <div className="mt-8 py-4 text-center text-gray-600 flex flex-col items-center justify-center">
-        <div className="flex items-center justify-center space-x-2">
-          <span>Wykonane z miłością</span>
-          <img src="/logo.png" alt="Logo" className="h-6" />
         </div>
       </div>
     </div>
